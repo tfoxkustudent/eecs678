@@ -6,7 +6,8 @@
 class Job{
 
 private:
-	static int jobid = 0;
+	int jobid = 0;
+	
         
 public:
 	int pjobid;
@@ -34,6 +35,6 @@ public:
 	void terminate() {
         	running = false;
 	}
-}
+};
 
 #endif

@@ -2,7 +2,8 @@
 #define QUASH_HPP
 
 #include <iostream>
-
+#include <vector>
+#include <string>
 struct job {
 	int jobid;
 	pid_t pid;
@@ -13,34 +14,34 @@ bool is_running();
 
 void terminate();
 
-char** parse(char* cmd, int* numCmds);
+std::vector<std::string> parse(std::string cmd);
 
 void pwd();
 
-void cd(char* target);
+void cd(std::string target);
 
 void flush_jobs();
 
 void jobs();
 
-void echo(char** args, int argCount);
+void echo(std::vector<std::string> args);
 
-void set(char** args, int argCount);
+void set(std::vector<std::string> args);
 
-char* get_path(char* cmd);
+std::string get_path(std::string cmd);
 
-void pipe(char* args, int argCount);
+void pipe(std::string args);
 
-void run_in_background(char* cmd, char** args, int argCount);
+void run_in_background(std::string cmd, std::vector<std::string> args);
 
-void run(char** args, int argCount);
+void run(std::vector<std::string> args);
 
-void ioRedirect(char *cmd, char **args, int argCount);
+void ioRedirect(std::string cmd, std::vector<std::string> args);
 
-void killProcess(char** args, int argCount);
+void killProcess(std::vector<std::string> args);
 
-void handle(char* cmd);
+void handle(std::string cmd);
 
-void rm_whitespace(char* cmd);
+void rm_whitespace(std::string cmd);
 
 #endif
