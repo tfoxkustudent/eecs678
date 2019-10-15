@@ -11,6 +11,7 @@
 #include <vector>
 #include <signal.h>
 #include <inttypes.h>
+#include <algorithm>
 
 static int numJobs;
 std::vector<Job> jobList;

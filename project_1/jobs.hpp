@@ -24,10 +24,6 @@ public:
 		delete cmd;
 	}
 	
-	void start() {
-        	running = true;
-	}
-
 	bool is_running() {
         	return running;
 	}

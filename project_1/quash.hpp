@@ -4,15 +4,6 @@
 #include <iostream>
 #include <vector>
 #include <string>
-struct job {
-	int jobid;
-	pid_t pid;
-	char *cmd;
-};
-
-bool is_running();
-
-void terminate();
 
 std::vector<std::string> parse(std::string cmd);
 
