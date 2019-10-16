@@ -33,6 +33,6 @@ void killProcess(std::vector<std::string> args);
 
 void handle(std::string cmd);
 
-void rm_whitespace(std::string cmd);
+void rm_whitespace(std::string &cmd);
 
 #endif

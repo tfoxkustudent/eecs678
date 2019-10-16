@@ -7,26 +7,32 @@
 #include <cerrno>
 #include <sys/wait.h>
 #include <sys/param.h>
-#include <readline/readline.h>
 #include <vector>
 #include <signal.h>
 #include <inttypes.h>
 #include <algorithm>
+#include <cstring>
+#include <sstream>
+#include <iterator>
 
 static int numJobs;
 std::vector<Job> jobList;
+static bool running;
+
+void start() {
+	running = true;
+}
+
+void terminate() {
+        running = false;
+}
 
 
 std::vector<std::string> parse(std::string cmd_line) {
-	std::vector<std::string> parsed_string;
-	std::string token;
-	std::string delimiter = " ";
-	int pos = 0;
-	while ((pos = cmd_line.find(delimiter)) != std::string::npos) {
-    		token = cmd_line.substr(0, pos);
-    		parsed_string.push_back(token);
-		cmd_line.erase(0, pos + delimiter.length());
-	}	
+	std::stringstream ss(cmd_line);
+	std::istream_iterator<std::string> begin(ss);
+	std::istream_iterator<std::string> end;
+	std::vector<std::string> parsed_string(begin, end);
 	return parsed_string;
 }
 
@@ -69,9 +75,8 @@ void jobs() {
 
 }
 
-void set(std::string cmd_line) {
-	std::vector<std::string> commandList = parse(cmd_line);
-	std::string command = commandList[1];
+void set(std::vector<std::string> cmd_line) {
+	std::string command = cmd_line[1];
 	std::string delimiter = "=";
 	std::string env = command.substr(0, command.find(delimiter));
 	std::string loc = command.substr(command.find(delimiter)+1, command.size());
@@ -191,7 +196,7 @@ void run_in_background(std::string cmd, std::vector<std::string> args) {
 		job.pid = pid;
 		jobList.push_back(job);
 	}
-	//while(waitpid(pid, NULL, WEXITED | WNOHANG) > 0) {}
+	//	while(waitpid(pid, NULL, WEXITED | WNOHANG) > 0) {}
 }
 
 void run(std::vector<std::string> args) {
@@ -230,37 +235,22 @@ void run(std::vector<std::string> args) {
 		std::cout << "Command not found\n";
 	}
 }
-/*
+
 void ioRedirect(std::string cmd, std::vector<std::string> args) {
-	if (strchr(cmd.c_str(), '<') != NULL && strchr(cmd.c_str(), '>') != NULL) {
+	if (cmd.find_first_of('<') != std::string::npos && cmd.find_first_of('>') != std::string::npos) {
 		int status;
-		std::string inFileName;
-    		getcwd(inFileName);
-    		inFileName.push_back("/");
+		char inFileName[1024];
+                getcwd(inFileName, 1024);
+                strcat(inFileName, "/");
 
-    		std::string outFileName;
-    		getcwd(outFileName);
-    		outFileName.push_back("/");
+		char outFileName[1024];
+                getcwd(outFileName, 1024);
+                strcat(outFileName, "/");
 		
-		tokenizedCmd = strtok(cmd, " ");
-
-    		char temp[1024] = "";
-
-    		while (tokenizedCmd != NULL) {
-      			if (strcmp(tokenizedCmd, "<") == 0) {
-        			tokenizedCmd = strtok(NULL, " ");
-        			strcat (inFileName, tokenizedCmd);
-        			tokenizedCmd = strtok(NULL, " ");
-        			tokenizedCmd = strtok(NULL, " ");
-        			strcat(outFileName, tokenizedCmd);
-        			tokenizedCmd = NULL;
-      			}
-      			else {
-        			strcat(temp, tokenizedCmd);
-        			strcat(temp, " ");
-        			tokenizedCmd = strtok(NULL, " ");
-      			}
-    		}
+		std::string command;
+		std::string command = cmd.substr(0, cmd.find("<"));
+                strcat(inFileName, cmd.substr(cmd.find("<")+1, cmd.find(">")).c_str());
+                strcat(outFileName, cmd.substr(cmd.find(">")+1, cmd.size()).c_str());
 		
 		pid_t pid;
 		pid = fork();
@@ -276,9 +266,56 @@ void ioRedirect(std::string cmd, std::vector<std::string> args) {
     		else if((waitpid(pid, &status, 0)) == -1) {
       			std::cout << "Process 1 encountered an error. ERROR";
     		}
+	}
+	else if (cmd.find_first_of("<") != std::string::npos) {
+		int status;
+		char fileName[1024];
+		getcwd(fileName, 1024);
+		strcat(fileName, "/");
+
+		std::string command = cmd.substr(0, cmd.find("<"));
+		strcat(fileName, cmd.substr(cmd.find("<")+1, cmd.size()).c_str());
+
+		pid_t pid;
+		pid = fork;
+
+		if (pid==0) {
+			freopen(fileName, "r", stdin);
+			handle(command);
+			fclose(stdin);
+			exit(0);
 		}
+		else if((waitpid(pid, &status, 0)) == -1) {
+			std::cout << "Process 1 had an error\n";
+		}
+	}
+	else {
+		int status;
+                char fileName[1024];
+                getcwd(fileName, 1024);
+                strcat(fileName, "/");
+
+                std::string command = cmd.substr(0, cmd.find(">"));
+                strcat(fileName, cmd.substr(cmd.find(">")+1, cmd.size()).c_str());
+
+                pid_t pid;
+                pid = fork;
+
+                if (pid==0) {
+                        freopen(fileName, "w", stdout);
+                        handle(command);
+                        fclose(stdout);
+                        exit(0);
+                }
+                else if((waitpid(pid, &status, 0)) == -1) {
+                        std::cout << "Process 1 had an error\n";
+                }
+	
+	}
 }
-*/
+
+
+
 void killProcess(std::vector<std::string> args) {
 	std::string temp;
 	for (int i = 0;  i < args.size(); i++) {
@@ -298,10 +335,50 @@ void killProcess(std::vector<std::string> args) {
 }
 
 void handle(std::string cmd) {
-	return;
+	std::string temp;
+	temp = cmd;
+	std::vector<std::string> args = parse(temp);
+
+	if (args.size() == 0) {
+		std::cout << "returning size 0";
+		return;
+	}
+
+	if (args[0] == "exit" || args[0] == "quit") {
+		std::cout << "Exiting ...\n";
+		running = false;
+	}
+
+	else if (args.back() == "&") {
+		run_in_background(cmd, args);
+	}
+	else if (cmd.find_first_of('<') != std::string::npos || cmd.find_first_of('>') != std::string::npos) {
+		ioRedirect(cmd, args);
+	}
+	else if (cmd.find_first_of('|') != std::string::npos) {
+		pipe(cmd);
+	}
+	else if (args[0] == "pwd") {
+		pwd();
+	}
+	else if (args[0] == "cd") {
+		cd(args[1]);
+	}
+	else if (args[0] == "set") {
+		set(args);		
+	}
+	else if (args[0] == "jobs") {
+		jobs();
+	}
+	else if (args[0] == "kill") {
+		killProcess(args);
+	}
+	else {
+		run(args);
+	}
 }
 
-void rm_whitespace(std::string cmd) {
+void rm_whitespace(std::string &cmd) {
 	if (cmd.empty()) {
 		return;
 	}
@@ -309,5 +386,19 @@ void rm_whitespace(std::string cmd) {
 }
 
 int main (int argc, char **argv, char **envp) {
-	return 0;
+	running = true;
+	std::string cmd, line;
+	std::cout << "\nWelcome to Quash!\n";
+	std::cout << "Type exit or quit to leave quash\n";
+	
+	while(running == true) {
+		std::cout << "quash$> ";
+		std::cin >> cmd;
+		if (cmd != "") {
+			rm_whitespace(cmd);
+			handle(cmd);
+		}
+		flush_jobs();
+	}
+	return 0;	
 }
