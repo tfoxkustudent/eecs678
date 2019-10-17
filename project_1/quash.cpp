@@ -26,13 +26,19 @@ void start() {
 void terminate() {
         running = false;
 }
-
+void print(std::vector<std::string> const &input)
+{
+	for (int i = 0; i < input.size(); i++) {
+		std::cout << input.at(i) << ' ';
+	}
+}
 
 std::vector<std::string> parse(std::string cmd_line) {
 	std::stringstream ss(cmd_line);
 	std::istream_iterator<std::string> begin(ss);
 	std::istream_iterator<std::string> end;
 	std::vector<std::string> parsed_string(begin, end);
+	//print(parsed_string);
 	return parsed_string;
 }
 
@@ -44,7 +50,9 @@ void pwd() {
 
 
 void cd(std::string dest) {
+	std::cout << "dest " << dest;
 	if(dest == "") {
+		std::cout << "in right place\n";
 		if(chdir(getenv("HOME")) == -1) {
 			std::cout << "NO HOME DIRECTORY AT PATH : " << getenv("HOME") << "\n";
 		}
@@ -81,7 +89,7 @@ void set(std::vector<std::string> cmd_line) {
 	std::string env = command.substr(0, command.find(delimiter));
 	std::string loc = command.substr(command.find(delimiter)+1, command.size());
 	
-	if ((getenv("HOME") != env) && (getenv("PATH") != env)) {
+	if (("HOME" != env) && ("PATH" != env)) {
 		std::cout << "We can only set HOME and PATH environments" << "\n";
 		return;
 	}
@@ -112,34 +120,38 @@ std::string get_path(std::string cmd) {
 			return path;
 		}
 	}
-	return NULL;
+	return "";
 }
 
 void pipe(std::string cmd) {
 	std::vector<std::string> args;
 	std::string before_pipe, after_pipe;
 	before_pipe = cmd.substr(0,cmd.find("|"));
+	std::cout << "Before Pipe: " << before_pipe << "\n";
 	cmd.erase(0, cmd.find("|")+1);
 	after_pipe = cmd;
+	std::cout << "After pipe: " << after_pipe << "\n";
 	args = parse(before_pipe);
+	
 	before_pipe = get_path(args[0]);
-
 	if(before_pipe == "") {
 		if(access(args[0].c_str(), X_OK) == 0) {
 			before_pipe = args[0];
 		}
 		else {
-			std::cout << "Command was not found " << "\n";
+			std::cout << "Command was not found: " << before_pipe << "\n";
 			return;
 		}
 	}
-	char* arr[args.size()];
+	char* arr[args.size()+1];
 	
 	for (int i = 0; i < args.size(); i++ ) {
 		char cstr[args[i].size() + 1];
 		strcpy(cstr, args[i].c_str());
+		arr[i] = new char [args[i].size()];
 		arr[i] = cstr;
 	}
+	arr[args.size()] = NULL;
 	pid_t pid_1, pid_2;
 	
 	int fds[2], status;
@@ -150,8 +162,7 @@ void pipe(std::string cmd) {
 		dup2(fds[1], STDOUT_FILENO);
     		close(fds[0]);
     		close(fds[1]);
-
-    		if(execv(before_pipe.c_str(), arr) < 0) {
+    		if(execvp(before_pipe.c_str(), arr) < 0) {
       			std::cout << "Unnable to execute commands before pipe. ERROR\n";
 		}
 
@@ -163,9 +174,10 @@ void pipe(std::string cmd) {
 		dup2(fds[0], STDIN_FILENO);
     		close(fds[0]);
     		close(fds[1]);
-
     		fflush(stdout);
-
+		std::string input;
+		std::getline (std::cin,input);
+		after_pipe += " " + input;
     		handle(after_pipe);
 
     		exit(0);
@@ -201,29 +213,28 @@ void run_in_background(std::string cmd, std::vector<std::string> args) {
 
 void run(std::vector<std::string> args) {
 	int status;
-	std::string temp = NULL;
-	if (args[0][0] == '.') {
+	std::string temp = "";
+	if (args[0][0] == '.' || args[0][0] == '/') {
 		if(access(args[0].c_str(), X_OK) == 0)
-      			temp = args[0];
+			temp = args[0];
 	}
 	else {
 		temp = get_path(args[0]);
 	}
-	
 	if (temp != "") {
 		pid_t pid;
 		pid = fork();
 
 		if (pid == 0){
-			char* arr[args.size()];
- 
+			char* arr[args.size()+1];
          		for (int i = 0; i < args.size(); i++ ) {
-                 		char cstr[args[i].size() + 1];
+         			char cstr[args[i].size() + 1];
                  		strcpy(cstr, args[i].c_str());
-                 		arr[i] = cstr;
-         		}
-
-			if (execv(temp.c_str(),arr) < 0) {
+				arr[i] = new char [args[i].size()];
+                 		strcpy(arr[i],cstr);
+			}
+			arr[args.size()] = NULL;
+			if (execvp(temp.c_str(),arr) < 0) {
 				std::cout << "Error running the command\n";
 			}
 		}
@@ -247,18 +258,28 @@ void ioRedirect(std::string cmd, std::vector<std::string> args) {
                 getcwd(outFileName, 1024);
                 strcat(outFileName, "/");
 		
-		std::string command;
 		std::string command = cmd.substr(0, cmd.find("<"));
-                strcat(inFileName, cmd.substr(cmd.find("<")+1, cmd.find(">")).c_str());
+                strcat(inFileName, cmd.substr(cmd.find("<")+1, cmd.find(">") - cmd.find("<") - 1).c_str());
                 strcat(outFileName, cmd.substr(cmd.find(">")+1, cmd.size()).c_str());
 		
+		std::string stringinFileName(inFileName);
+                rm_whitespace(stringinFileName);
+                strcpy(inFileName,stringinFileName.c_str());
+		
+		std::string stringoutFileName(outFileName);
+                rm_whitespace(stringoutFileName);
+                strcpy(outFileName,stringoutFileName.c_str());
+
 		pid_t pid;
 		pid = fork();
 		if (pid == 0)
-    		{
+    		{	
       			freopen(outFileName, "w", stdout);
 			freopen(inFileName, "r", stdin);
-			handle(temp);
+			std::string input;
+                        std::getline (std::cin,input);
+                        command += " " + input;
+			handle(command);
 			fclose(stdin);
 			fclose(stdout);
       			exit(0);
@@ -275,12 +296,18 @@ void ioRedirect(std::string cmd, std::vector<std::string> args) {
 
 		std::string command = cmd.substr(0, cmd.find("<"));
 		strcat(fileName, cmd.substr(cmd.find("<")+1, cmd.size()).c_str());
+		std::string stringFileName(fileName);
+                rm_whitespace(stringFileName);
+                strcpy(fileName,stringFileName.c_str());
 
 		pid_t pid;
-		pid = fork;
+		pid = fork();
 
 		if (pid==0) {
 			freopen(fileName, "r", stdin);
+			std::string input;
+			std::getline (std::cin,input);
+			command += " " + input;
 			handle(command);
 			fclose(stdin);
 			exit(0);
@@ -297,9 +324,11 @@ void ioRedirect(std::string cmd, std::vector<std::string> args) {
 
                 std::string command = cmd.substr(0, cmd.find(">"));
                 strcat(fileName, cmd.substr(cmd.find(">")+1, cmd.size()).c_str());
-
+		std::string stringFileName(fileName);
+		rm_whitespace(stringFileName);
+		strcpy(fileName,stringFileName.c_str());
                 pid_t pid;
-                pid = fork;
+                pid = fork();
 
                 if (pid==0) {
                         freopen(fileName, "w", stdout);
@@ -338,9 +367,7 @@ void handle(std::string cmd) {
 	std::string temp;
 	temp = cmd;
 	std::vector<std::string> args = parse(temp);
-
 	if (args.size() == 0) {
-		std::cout << "returning size 0";
 		return;
 	}
 
@@ -362,7 +389,12 @@ void handle(std::string cmd) {
 		pwd();
 	}
 	else if (args[0] == "cd") {
+		if (args.size() > 1) { 
 		cd(args[1]);
+		}
+		else {
+		cd("");
+		}
 	}
 	else if (args[0] == "set") {
 		set(args);		
@@ -385,6 +417,7 @@ void rm_whitespace(std::string &cmd) {
 	cmd.erase(std::remove_if(cmd.begin(), cmd.end(), ::isspace), cmd.end());
 }
 
+
 int main (int argc, char **argv, char **envp) {
 	running = true;
 	std::string cmd, line;
@@ -392,8 +425,8 @@ int main (int argc, char **argv, char **envp) {
 	std::cout << "Type exit or quit to leave quash\n";
 	
 	while(running == true) {
-		std::cout << "quash$> ";
-		std::cin >> cmd;
+		std::cout << "\nquash$> ";
+		std::getline (std::cin,cmd);
 		if (cmd != "") {
 			rm_whitespace(cmd);
 			handle(cmd);
