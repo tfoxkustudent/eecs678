@@ -14,9 +14,9 @@
 #include <cstring>
 #include <sstream>
 #include <iterator>
-
+#include <stdio.h>
 static int numJobs;
-std::vector<Job> jobList;
+std::vector<Job*> jobList;
 static bool running;
 
 void start() {
@@ -38,7 +38,6 @@ std::vector<std::string> parse(std::string cmd_line) {
 	std::istream_iterator<std::string> begin(ss);
 	std::istream_iterator<std::string> end;
 	std::vector<std::string> parsed_string(begin, end);
-	//print(parsed_string);
 	return parsed_string;
 }
 
@@ -68,7 +67,7 @@ void cd(std::string dest) {
 
 void flush_jobs() {
 	for (int i = 0; i < jobList.size(); i++) {
-		if (jobList[i].running == false) {
+		if (jobList[i]->is_running() == false) {
 			jobList.erase (jobList.begin()+i);	
 		}
 	}
@@ -78,7 +77,7 @@ void jobs() {
 	flush_jobs();
 	std::cout << "JOB ID" << "     " <<  "PID" << "        " << "cmd" << "\n";
 	for (auto job : jobList) {
-		std::cout << job.pjobid << "     " << job.pid << "     " << job.cmd << "\n";
+		std::cout << job->pjobid << "         " << job->pid << "       " << job->cmd << "\n";
 	}	
 
 }
@@ -115,7 +114,7 @@ std::string get_path(std::string cmd) {
                 path.erase(0, pos + delimiter.length());
         }
 	for( auto path : path_string) {
-		path += cmd;
+		path += "/"+cmd;
 		if (access(path.c_str(),X_OK) == 0) {
 			return path;
 		}
@@ -127,10 +126,8 @@ void pipe(std::string cmd) {
 	std::vector<std::string> args;
 	std::string before_pipe, after_pipe;
 	before_pipe = cmd.substr(0,cmd.find("|"));
-	std::cout << "Before Pipe: " << before_pipe << "\n";
 	cmd.erase(0, cmd.find("|")+1);
 	after_pipe = cmd;
-	std::cout << "After pipe: " << after_pipe << "\n";
 	args = parse(before_pipe);
 	
 	before_pipe = get_path(args[0]);
@@ -144,12 +141,11 @@ void pipe(std::string cmd) {
 		}
 	}
 	char* arr[args.size()+1];
-	
 	for (int i = 0; i < args.size(); i++ ) {
 		char cstr[args[i].size() + 1];
 		strcpy(cstr, args[i].c_str());
 		arr[i] = new char [args[i].size()];
-		arr[i] = cstr;
+		strcpy(arr[i],cstr);
 	}
 	arr[args.size()] = NULL;
 	pid_t pid_1, pid_2;
@@ -162,6 +158,7 @@ void pipe(std::string cmd) {
 		dup2(fds[1], STDOUT_FILENO);
     		close(fds[0]);
     		close(fds[1]);
+		fflush(stdout);
     		if(execvp(before_pipe.c_str(), arr) < 0) {
       			std::cout << "Unnable to execute commands before pipe. ERROR\n";
 		}
@@ -174,11 +171,8 @@ void pipe(std::string cmd) {
 		dup2(fds[0], STDIN_FILENO);
     		close(fds[0]);
     		close(fds[1]);
-    		fflush(stdout);
-		std::string input;
-		std::getline (std::cin,input);
-		after_pipe += " " + input;
-    		handle(after_pipe);
+		fflush(stdout);
+		handle(after_pipe);
 
     		exit(0);
 	}
@@ -196,19 +190,52 @@ void pipe(std::string cmd) {
 
 void run_in_background(std::string cmd, std::vector<std::string> args) {
 	cmd.pop_back();
-	
 	pid_t pid;
 	pid = fork();
 	
 	if (pid == 0) {
+		int job_id;
+		if (jobList.empty()) {
+		std::cout << "\n[1]" << " " << getpid() << " running in background\n";
+		job_id = 1;
+		}
+		else {
+		std::cout << "\n[" << jobList.back()->pjobid + 1 << "]" << " " << getpid() << " running in background\n";
+		job_id = jobList.back()->pjobid+ 1;
+		}
 		handle(cmd);
+		std::cout << "[" << job_id << "]" << " " << getpid() << " finished " << args[0] << "\n";
+		 
+		for (auto job : jobList) {
+                if(job_id == job->pjobid) {
+                        if (kill(job->pid, 0) == 0) {
+                                if (kill(job->pid, strtoumax(args[1].c_str(), NULL, 10)) == -1) {
+                                        std::cout << "Killing encountered an error: ERROR";
+                                        return;
+                                }
+                                else {
+                                        job->terminate();
+                                        return;
+                                }
+                        }
+                }
+        }
+
+
+
 	}
 	else {
-		Job job = Job();
-		job.pid = pid;
+		Job* job = nullptr;
+		if (jobList.empty()) {
+			job = new Job(args[0], 1);
+		}
+		else {
+			job = new Job(args[0], (jobList.back()->pjobid + 1));
+		}
+		job->pid = pid;
 		jobList.push_back(job);
 	}
-	//	while(waitpid(pid, NULL, WEXITED | WNOHANG) > 0) {}
+	while(waitpid(pid, NULL, WEXITED | WNOHANG) > 0) {}
 }
 
 void run(std::vector<std::string> args) {
@@ -346,26 +373,32 @@ void ioRedirect(std::string cmd, std::vector<std::string> args) {
 
 
 void killProcess(std::vector<std::string> args) {
-	std::string temp;
-	for (int i = 0;  i < args.size(); i++) {
-		temp = jobList[i].pid;
-		if(args[2] == temp) {
-      			if (kill(jobList[i].pid, 0) == 0) {
-        			if (kill(jobList[i].pid, strtoumax(args[1].c_str(), NULL, 10)) == -1)
+	int temp = (stoi(args[2]));
+	
+	for (auto job : jobList) {
+		if(temp == job->pjobid) {
+      			if (kill(job->pid, 0) == 0) {
+        			if (kill(job->pid, stoi(args[1])) == -1) {
           				std::cout << "Killing encountered an error: ERROR";
-        			else
-      	  				std::cout << "Killed process " << jobList[i].pid << " " << "(jobid: " << jobList[i].pjobid << ")\n";
-      			}
-      			else
-      				std::cout << "The requested job does not exist.\n";
-    			}
-  	}
+					return;
+				}
+        			else {
+      	  				std::cout << "Killed process " << job->pid << " " << "(jobid: " << job->pjobid << ")\n";
+      					job->terminate();
+					return;
+				}
+			}
+		}		
+      	}
+      	std::cout << "The requested job does not exist.\n";
+    		
 	
 }
 
 void handle(std::string cmd) {
 	std::string temp;
 	temp = cmd;
+	
 	std::vector<std::string> args = parse(temp);
 	if (args.size() == 0) {
 		return;
@@ -419,19 +452,29 @@ void rm_whitespace(std::string &cmd) {
 
 
 int main (int argc, char **argv, char **envp) {
-	running = true;
-	std::string cmd, line;
-	std::cout << "\nWelcome to Quash!\n";
-	std::cout << "Type exit or quit to leave quash\n";
+	char cmdLineInput[1024];
+	std::string command;
+	std::cout << " Press Enter to enter quash \n\n ";
+	std::getline (std::cin,command);
+	if (command != "") {
+		std::cout << " Bypassing Quash Shell and running commands from file \n\n";
+		handle(command);
+	}
+	else {
 	
-	while(running == true) {
-		std::cout << "\nquash$> ";
-		std::getline (std::cin,cmd);
-		if (cmd != "") {
-			rm_whitespace(cmd);
-			handle(cmd);
+		running = true;
+		std::string cmd, line;
+	
+		std::cout << "\nWelcome to Quash!\n";
+		std::cout << "Type exit or quit to leave quash\n";	
+		while(running == true) {
+			std::cout << "\nquash$> ";
+			std::getline (std::cin,cmd);
+			if (cmd != "") {
+				handle(cmd);
+			}
+			flush_jobs();
 		}
-		flush_jobs();
 	}
 	return 0;	
 }

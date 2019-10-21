@@ -6,31 +6,29 @@
 class Job{
 
 private:
-	int jobid = 0;
 	
         
 public:
 	int pjobid;
 	pid_t pid;
-       	std::vector<std::string>* cmd;
-	bool running;
-
-	Job() {
-		pjobid = jobid;
-		jobid++;
-		running = true;
+	bool job_running;
+	std::string cmd;
+	Job(std::string cmd, int pjobid) {
+		this->pjobid = pjobid ;
+		job_running = true;
+		this->cmd = cmd;
 	}
-	~Job() {
-		delete cmd;
+	Job(): Job("", 0) {
 	}
 	
 	bool is_running() {
-        	return running;
+        	return job_running;
 	}
 
 	void terminate() {
-        	running = false;
+        	job_running = false;
 	}
+	
 };
 
 #endif
